@@ -24,7 +24,10 @@ export class Dialer{
   if(this.P.hangupOnStatus==null)this.P.hangupOnStatus=true;if(this.P.hangupOnSkip==null)this.P.hangupOnSkip=true;   // решения пользователя: оба вкл, отключаемы
   this.q.only=this.P.only!==false;this.auto=this.P.auto!==false;this.paused=false;this.calling=false;this.t0=0;this.call=null;
   this.saved=null;this.saveErr="";this.ps=0;this.wB=false;this.wD=false;
-  const s=J(E.store,"pd2s",null),d=today(new Date(E.now()));this.ses=s&&s.d==d?{tot:s.tot|0,sprint:s.sprint|0,tFirst:s.tFirst|0,times:s.times||[],dset:new Set(s.dset||[])}:{tot:0,sprint:0,tFirst:0,times:[],dset:new Set()};
+  // кусок 34: счёт дня и спринт живут по игровым суткам (с 10:00 по часам ПК, как у игры), а не по календарной полуночи. Дата в pd2s прежнего формата (ГГГГ-ММ-ДД).
+  const s=J(E.store,"pd2s",null),d=this.dk(E.now()),same=s&&(s.d==d||(s.d==today(new Date(E.now()))&&new Date(E.now()).getHours()<10));
+  this.ses=same?{d,tot:s.tot|0,sprint:s.sprint|0,tFirst:s.tFirst|0,times:s.times||[],dset:new Set(s.dset||[])}:{d,tot:0,sprint:0,tFirst:0,times:[],dset:new Set()};
+  this.sprLeft=!same&&s&&(s.sprint|0)>0?(s.sprint|0):0;   // хвост вчерашнего спринта: интерфейс покажет, как шкала падает до нуля
   const em=(k,v)=>this.bus.emit(k,v);
   this.sheets=new SheetsSync({table:this.t,cfg:()=>E.readOnly?{...this.P.sheets,on:false}:this.P.sheets,fileTab:()=>(this.P.files[this.t.name]||{}).tab||this.t.name,store:E.store,fetch:E.fetch,setTimeout:E.setTimeout,clearTimeout:E.clearTimeout,now:E.now,
    isEditing:l=>E.isEditing(l),confirm:m=>E.confirm(m),busyLocal:()=>!!(this.ps||this.wB||this.wD),kv:E.kv,emit:(k,v)=>{if(k=='leadsReplaced')this.q.keep(v.keep);if(k=='tableChanged'){this.persist();em('leadChanged',this.view())}em(k,v)}});
@@ -33,8 +36,16 @@ export class Dialer{
   this.bus.on('callRinging',c=>{this.call={id:c.callId,ended:null}});
   this.bus.on('callEnded',c=>{if(this.call&&this.call.id===c.callId)this.call.ended=c.at;this.hang.onEnded(c.callId);this.calling=false;em('leadChanged',this.view())});
   this.bus.on('zoomEnded',()=>{this.calling=false});}
+ dk(t){const f=this.env&&this.env.dayKey;return f?f(t):today(new Date(t))}   // игровые сутки: env.dayKey (core/stats.js); без него — календарная дата (старое поведение)
+ // новые игровые сутки: счёт дня и спринт с нуля; событие dayRolled {left} — шкала спринта падает до нуля (left — сколько было)
+ rollDay(){const d=this.dk(this.env.now());if(this.ses.d===d)return false;const left=this.ses.sprint|0;this.ses={d,tot:0,sprint:0,tFirst:0,times:[],dset:new Set()};this.sesSave();this.emit('dayRolled',{left,day:d});return true}
+ takeSprLeft(){const n=this.sprLeft|0;this.sprLeft=0;return n}
+ // «Закончить смену»: неполный спринт сгорает (шкала падает до нуля). Сотня дня (tot) не трогается. → сколько было в шкале
+ endSprint(){const s=this.ses,left=s.sprint|0;if(left<=0)return 0;s.sprint=0;s.spStart=0;this.sesSave();this.emit('sprintDrain',{left,why:'shift'});return left}
+ // сверка с игрой: число засчитанных за игровой день статусов главное. Если счёт дайлера разошёлся (старая полночная граница, статус задним числом), берём число игры.
+ syncCount(n){const s=this.ses;n=n|0;if(n<0||s.tot===n)return false;s.tot=n;if(s.sprint>=SPRINT)s.sprint=SPRINT-1;if(s.sprint>n)s.sprint=n;this.sesSave();return true}
  sp(){try{this.env.store.setItem("pd2",JSON.stringify(this.P))}catch(e){}}
- sesSave(){if(this.env.readOnly)return;const s=this.ses;try{this.env.store.setItem("pd2s",JSON.stringify({d:today(new Date(this.env.now())),tot:s.tot,sprint:s.sprint,tFirst:s.tFirst,times:s.times,dset:[...s.dset]}))}catch(e){}}
+ sesSave(){if(this.env.readOnly)return;const s=this.ses;try{this.env.store.setItem("pd2s",JSON.stringify({d:s.d||this.dk(this.env.now()),tot:s.tot,sprint:s.sprint,tFirst:s.tFirst,times:s.times,dset:[...s.dset]}))}catch(e){}}
  emit(k,v){this.bus.emit(k,v)}
  get cur(){return this.q.cur}
  // ---- снимок для UI (ничего не рисует) ----
@@ -44,7 +55,7 @@ export class Dialer{
     notes:t.get(l,"Notes"),callback:t.get(l,"Callback?"),prep:t.prep(l),result:r,resultIndex:statusIndex(r,this.P.map),resultColor:r?statusColor(r,this.P.map):null,local:localTime(t,l,new Date(this.env.now())),zone:(zone(t,l)||{}).z||null}:null,
    next:n?t.get(n,"Business"):null,remaining:this.q.remaining(),calling:this.calling,callSec:this.calling?Math.floor((this.env.now()-this.t0)/1000):0,paused:this.paused,auto:this.auto,only:this.q.only,
    canBack:this.q.hc>0,hasPrep:t.hasPrep(),filter:{...this.q.f},suggest:this.zoom.sug,saved:this.saved,saveErr:this.saveErr,exhausted:t.loaded&&!l}}
- tempo(){return tempo(this.ses.times.map(x=>x.t),this.env.now(),this.ses.tFirst)}       // UI зовёт раз в 5 с
+ tempo(){this.rollDay();return tempo(this.ses.times.map(x=>x.t),this.env.now(),this.ses.tFirst)}       // UI зовёт раз в 5 с
  // ---- источники ----
  loadText(text,name){this.t.loadText(text,name);const p=this.P.files[name]||{};this.q.start=Math.min(p.start||0,this.t.L.length-1);this.q.f={type:p.type||"",state:p.state||"",tz:p.tz||""};
   this.saved=null;this.saveErr="";this.q.reinit();this.emit('leadsLoaded',{count:this.t.L.length,name,head:this.t.h});this.emit('leadChanged',this.view())}
@@ -97,7 +108,7 @@ export class Dialer{
  pause(){this.paused=!this.paused;this.pauseAt=this.paused?this.env.now():0;this.emit('pauseChanged',{paused:this.paused,at:this.pauseAt});this.emit('leadChanged',this.view());
   if(!this.paused&&this.auto&&this.cur&&!this.calling&&!this.t.res(this.cur))this.dial()}
  // ---- счёт дня (смысл старой геймификации: спринт 25 (было 20, просьба пользователя) и праздник на каждые 100 — событие milestone для игры) ----
- tally(l){const s=this.ses,p=this.t.ph(l),n=this.env.now();s.tot++;s.sprint++;if(s.sprint===1)s.spStart=n;if(!s.tFirst)s.tFirst=n;s.times.push({t:n,p});s.dset.add(p);
+ tally(l){this.rollDay();const s=this.ses,p=this.t.ph(l),n=this.env.now();s.tot++;s.sprint++;if(s.sprint===1)s.spStart=n;if(!s.tFirst)s.tFirst=n;s.times.push({t:n,p});s.dset.add(p);
   let ms=null;if(s.sprint>=20){const d=n-(s.spStart||n);if(!this.P.best||d<this.P.best){this.P.best=d;this.sp()}}
   if(s.tot%100==0){s.sprint=0;ms={kind:'hundred',n:s.tot}}else if(s.sprint>=SPRINT){s.sprint=0;ms={kind:'sprint',n:s.tot,ms:n-(s.spStart||n)}}
   this.sesSave();return ms}

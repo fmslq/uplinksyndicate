@@ -19,7 +19,7 @@ export class SheetsSync{
  saSave(){try{this.store.setItem("pd2a",JSON.stringify(this.SA))}catch(e){}}
  get on(){const c=this.cfg();return !!(c.on&&c.url)}
  tabHint(){const t=this.table;return t.src?"sheet:"+t.src.id+":"+t.src.gid:this.fileTab()}
- state(){return{on:!!this.cfg().on,error:this.err,pending:this.SQ.length,skipped:this.fail,doc:this.info&&this.info.doc,tab:this.info&&this.info.tab,banner:this.msg}}
+ state(){return{on:!!this.cfg().on,error:this.err,pending:this.SQ.length,rejected:this.badInfo?this.badInfo.size:0,skipped:this.fail,doc:this.info&&this.info.doc,tab:this.info&&this.info.tab,banner:this.msg}}
  changed(){this.emit('sourceStateChanged',this.state())}
  // постановка в очередь изменений лида; withRes = отправить статус и дату
  sync(l,withRes){const c=this.cfg(),t=this.table;if(!c.on||!c.url||!l||!t.ph(l))return;const s={};
@@ -27,21 +27,26 @@ export class SheetsSync{
   if(t.get(l,"Notes")!==l.n0)s.Notes=t.get(l,"Notes");if(t.get(l,"Callback?")!==l.c0)s["Callback?"]=t.get(l,"Callback?");
   if(!Object.keys(s).length)return;
   const file=this.tabHint(),phone=t.ph(l),row=l.r||t.L.indexOf(l)+2,o=this.SQ.find(x=>x.file==file&&x.phone==phone&&x.row==row);
-  if(o)Object.assign(o.set,s);else this.SQ.push({file,phone,biz:t.get(l,"Business"),row,set:s,...(t.src?{sid:t.src.id,gid:t.src.gid}:{})});
+  if(o){Object.assign(o.set,s);if(this.cool)this.cool.delete(o);if(this.badInfo)this.badInfo.delete(o)}else this.SQ.push({file,phone,biz:t.get(l,"Business"),row,set:s,...(t.src?{sid:t.src.id,gid:t.src.gid}:{})});
   this.revision++;this.sqSave();this.pump();this.changed()}
  async post(obj){const c=this.cfg(),ac=new AbortController(),tm=this.setTimeout(()=>ac.abort(),25000),o={method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({secret:c.token,...obj}),signal:ac.signal};
   try{const r=await this.fetch(c.url,o);return await r.json()}
   finally{this.clearTimeout(tm)}}
- async pump(){if(this.busy||!this.SQ.length||!this.on)return;this.busy=1;
-  while(this.SQ.length){const op=this.SQ[0],sent={...op,set:{...op.set}};
+ async pump(){if(this.busy||!this.SQ.length||!this.on)return;this.busy=1;let glob=0;
+  // кусок 34: запись, которую таблица отклонила именно из-за себя (perm: «нет в списке», «номер не найден»), больше не блокирует остальные.
+  // Она остаётся в очереди нетронутой (pd2q прежнего формата) и на 60 с «отдыхает» (в памяти); общие сбои (секретное слово, нет сети, пустой ответ) по-прежнему останавливают проход.
+  const cool=this.cool||(this.cool=new Map()),bad=this.badInfo||(this.badInfo=new Map());
+  for(;;){const op=this.SQ.find(x=>!(cool.get(x)>this.now()));if(!op)break;const sent={...op,set:{...op.set}};
    try{const r=await this.post(sent);
-    if(r.ok&&!r.blind){this.info=r;for(const [k,v] of Object.entries(sent.set))if(op.set[k]===v)delete op.set[k];if(!Object.keys(op.set).length)this.SQ.shift();this.sqSave();this.err="";this.fail=0;if(this.msg)this.msg=null}
-    else if(r.perm||r.code=="validation"||/проверк\S* данных|data validation/i.test(String(r.err||""))){this.err=r.code||'ошибка';this.fail=1;this.msg=human(r,op);break}
-    else{this.err=r.code=="secret"?"secret":(r.err||"ошибка");this.msg=[...human(r,op),"tr"];break}}
-   catch(e){this.err="нет связи";break}
+    if(r.ok&&!r.blind){this.info=r;cool.delete(op);bad.delete(op);for(const [k,v] of Object.entries(sent.set))if(op.set[k]===v)delete op.set[k];if(!Object.keys(op.set).length){const i=this.SQ.indexOf(op);if(i>=0)this.SQ.splice(i,1)}this.sqSave();this.err="";this.fail=0;if(this.msg)this.msg=null}
+    else if(r.perm||r.code=="validation"||/проверк\S* данных|data validation/i.test(String(r.err||""))){cool.set(op,this.now()+60000);bad.set(op,{err:r.code||'ошибка',msg:human(r,op)});continue}
+    else{this.err=r.code=="secret"?"secret":(r.err||"ошибка");this.msg=[...human(r,op),"tr"];glob=1;break}}
+   catch(e){this.err="нет связи";glob=1;break}
    this.changed()}
+  for(const o of [...bad.keys()])if(!this.SQ.includes(o)){bad.delete(o);cool.delete(o)}
+  if(bad.size&&!glob){const [,b]=[...bad][0];this.err=b.err;this.fail=1;this.msg=b.msg}
   this.busy=0;this.changed();this.clearTimeout(this.T);if(this.SQ.length)this.T=this.setTimeout(()=>this.pump(),this.err=="secret"||this.fail?60000:8000);else if(!this.err)this.setTimeout(()=>this.pull(),500)}
- retry(){this.err="";this.pump()}
+ retry(){this.err="";this.cool=null;this.badInfo=null;this.pump()}
  // чтение правок из таблицы: раз в 45 с и при возврате во вкладку (если прошло > 8 с)
  async pull(manual){const t=this.table;if(!this.on||!t.L.length||this.syBusy)return;if(this.syOld&&!manual)return;
   if(this.SQ.length||this.busyLocal()||this.busy){if(manual)this.emit('toast',"Сначала дождись отправки в таблицу");return}

@@ -13,7 +13,7 @@ import {STATUS,CONFIG as C} from './config.js';
 import {withAllies,allyTrack} from './allies.js';
 import {keysInit,needKey,keyTrack} from './keys.js';
 import {laterHoldOf} from './bosslater.js';
-import {withAd,adAfter,ghostRec,ensure as adEnsure,nightly,raidCheck,freezeOff,AD} from './addict.js';
+import {withAd,adAfter,ghostRec,ghostDrop,ensure as adEnsure,nightly,raidCheck,freezeOff,AD} from './addict.js';
 
 // Чистка: трофей, у которого в журнале статусов найден НЕ победный статус того же лида и времени, убирается.
 export function cleanTrophies(root,G){const T=root.trophies;if(!T||!T.length||!G||!G.undo)return 0;const n=T.length;
@@ -74,7 +74,7 @@ export class Session{
       verified:r.meta.verified||u.verified||null,mode:r.meta.mode};(root.trophies||(root.trophies=[])).push(t);out.trophy=t}
     // Addiction: Сигнал, лут, гарант, цели дня, перк, рейд, призрак. Деньги, которые addict двинул (разгон, джекпот, рейд), — в u.adM для undo.
     const m0=G.money;out.ad=adAfter(root,G,ev,now,{state:lead.state,dayN:d.n,lead:lead.key});u.adM=G.money-m0;u.adSig=out.ad.sig||0;if(out.ad.raidM)u.raidM=out.ad.raidM;
-    out.ghost=ghostRec(root,now,ev&&ev.cls,u.id);out.key=keyTrack(root,G,ev,d.n);if(!ev||!ev.spam)allyTrack(root,G,ev);
+    out.ghost=ghostRec(root,now,ev&&ev.cls,u.id);u.gh={t:out.ghost.t,p:out.ghost.pitch?1:0,m:out.ghost.meet|0};out.key=keyTrack(root,G,ev,d.n);if(!ev||!ev.spam)allyTrack(root,G,ev);
     const dm=dominance(root,now),rk=rankOf(dm.pts),lv=levelOf(G.lifeXp);if(dm.idle)root.wasNobody=1;
     if(root.rank!=null&&rk>root.rank)out.rankUp=rk;if(root.lvl!=null&&lv>root.lvl)out.levelUp=lv;
     out.achv=evaluate({root,G,ev,now,d,st:lead&&lead.state,L:root.life,rank:rk,meta:root.meta,lvl:lv,sinceBefore});
@@ -89,7 +89,7 @@ export class Session{
       if(u.lh&&!(i===G.undo.length-1&&now-u.t<=C.undoSec*1000)){const b=Math.min(u.lh,G.laterHold||0);G.laterHold-=b;G.dxp+=b}   // worth-undo: вернуть удержанное ключом в шкалу, чтобы откат снял его
       const side=u.side,how=gUndo(G,now,i);
       if(how==='full'&&side)sideRestore(root,side);                    // полный откат: ачивки, задания, recent, максимумы, трофей
-      else{if(u.rec)unrecord(root,u);root.trophies=(root.trophies||[]).filter(t=>t.lead!==key||t.t!==u.t); // старый статус: ВСЁ, что он принёс
+      else{if(u.rec)unrecord(root,u);if(u.gh)ghostDrop(root,u);root.trophies=(root.trophies||[]).filter(t=>t.lead!==key||t.t!==u.t); // старый статус: ВСЁ, что он принёс
         for(const a of u.ach||[])if(root.ach)delete root.ach[a];                       // ачивки, открытые этим статусом
         for(const m of u.mis||[]){if(root.mdone&&root.mdone[m.k])delete root.mdone[m.k][m.id];G.money-=m.money;G.lifeXp=Math.max(0,G.lifeXp-(m.lx||0))}
         const A=root.ad;if(A){A.sig=Math.max(0,A.sig-(u.adSig||0));A.sigLife=Math.max(0,A.sigLife-(u.adSig||0));if(u.raidM&&A.raid&&A.raid.on){A.raid.m=Math.max(0,A.raid.m-u.raidM);A.raid.n=Math.max(0,A.raid.n-1)}}

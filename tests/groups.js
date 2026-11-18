@@ -4,6 +4,7 @@
 const meta=async()=>{const m=await import('../core/meta.js');return m};
 export const GROUPS=[
  ['Кусок 33: лиды, очередь, таймеры','./s33.tests.js','runS33Tests'],
+ ['Кусок 34: заметки r2p25','./s34.tests.js','runS34Tests'],
  ['Кусок 32: баланс и миграция','./s32.tests.js','runS32Tests'],['Старые проверки ядра','./legacy.tests.js','*'],['Кусок 31','./s31.tests.js','runS31Tests'],['Подсказки Гудка','../ui/work/hints.js','runHintTests'],
  ['Музыкальная библиотека','../ui/work/muslib.js','runMusLibTests'],['Дайлер: таблица и очередь','./dialer2.tests.js','runDialer2Tests'],
  ['Арт: подключение файлов','./arthooks.tests.js',['runArtHookTests','runArtAliasTests','runArtOldNameTests','runGhRepoTests']],

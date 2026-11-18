@@ -14,7 +14,7 @@ export const AD={
  sig:{TRASH:1,GATEKEEPER:2,MINOR:1,TALK:3,CALLBACK:4,BOOKED:25,DISCOVERY:40},  // Сигнал за статус. Отказы (TALK) дают больше мусора: «шрамы» (D5)
  roul:{base:.05,perFail:.0006,hh:1.5,cap:.18,from:['TRASH','GATEKEEPER','MINOR'],ms:3600}, // B1: шанс рулетки на мусорном статусе
  w:{c:56,u:26,r:12,e:5,l:1},wChest:{e:80,l:20},                    // веса редкостей; сундук гаранта = эпик+
- gap:25,                                                           // кусок 28: между находками (Шум и сундук) не меньше 25 неудач (всё, кроме CALL BOOKED и Discovery)
+ gap:25,gapMax:40,                                                 // кусок 28/34: между находками (Шум и сундук) не меньше 25 неудач и не больше 40 (случайно, равномерно). Неудача = всё, кроме CALL BOOKED и Discovery
  pity:[30,70],                                                     // C1: порог неудач — случайно 30–70
  freeze:{per:25,max:3,sec:180},                                    // E1: заряд за каждые 25 наборов дня, максимум 3, до 3 минут
  warm:{n:5,k:3,share:.05,sig:20,min:10,ask:10,from:[13,55],to:[23,10],retry:60},   // кусок 22: только пн–пт from..to по часам ПК; пропустил — ещё раз через retry мин; принять — за ask мин; бонус — min мин ИЛИ n наборов                                 // C6 v2 (кусок 18): «Разгон» — входящий вызов при 0 наборов за день. Принял → первые 5 наборов ×3 XP и $ (кроме BOOKED/DISCOVERY), после 5-го ещё 5% дневных $ и 20 Сигнала. Отклонил — до завтра
@@ -161,6 +161,9 @@ export function grant(root,G,id,y=1){const a=ensure(root),L=lootById(id),out={id
  if(L.calls)a.inv[id]=(a.inv[id]||0)+1;if(L.r==='l')a.stats.legend++;return out}
 export function activate(root,id){const a=ensure(root),L=lootById(id);if(!L||!L.calls||!(a.inv[id]>0))return{ok:false,why:'нет в рюкзаке'};
  if(a.act.filter(x=>x.left>0).length>=3)return{ok:false,why:'Активно уже 3 буста'};a.inv[id]--;if(!a.inv[id])delete a.inv[id];a.act.push({id,left:L.calls});return{ok:true}}
+// Сколько неудач должно пройти до следующей находки: от 25 до 40, значение зависит от a.gu (равномерно). Удача, перк «Шумный час» и счастливый час
+// сжимают верхнюю границу (находки идут чаще), но НИЖЕ 25 не опускают никогда.
+export const gapNeed=(a,t,hh)=>{const k=t&&t.luckK||1,L=Math.max(0,((t&&t.luck)||0)*k+(k-1)*.05+(hh?.05:0)),span=Math.max(0,Math.round((AD.gapMax-AD.gap)/(1+10*L)));return AD.gap+Math.floor(Math.min(.999999,a.gu||0)*(span+1))};
 // ВСЁ, что происходит после засчитанного статуса. Возвращает события для интерфейса. rnd — для тестов.
 export function adAfter(root,G,ev,now,{state,dayN=0,lead='',rnd=Math.random,hhMods=null}={}){const a=ensure(root),k=dayKey(now),y=C.districts[G.district-1][3],cls=ev.cls,o={};
  const t=adTotals(root,now),hh=happy(state,now);
@@ -174,12 +177,13 @@ export function adAfter(root,G,ev,now,{state,dayN=0,lead='',rnd=Math.random,hhMo
  {const ws=warmState(root,now,dayN),w=a.warm;if(ws&&!w.done&&!w.end&&ws.n>=AD.warm.n&&now-w.at<AD.warm.min*60000){w.done=now;w.end=now;w.why='done';const m=Math.round(AD.warm.share*C.assumedDailyMoney*y);G.money+=m;a.sig+=AD.warm.sig;a.sigLife+=AD.warm.sig;o.warm={money:m,sig:AD.warm.sig}}}
  // гарант
  if(!a.pity.at)a.pity.at=AD.pity[0]+Math.floor(rnd()*(AD.pity[1]-AD.pity[0]+1));
- const win=cls==='BOOKED'||cls==='DISCOVERY';if(win)a.pity.n=0;else{a.pity.n++;a.gap=(a.gap==null?AD.gap:a.gap)+1}const gapOk=(a.gap==null?AD.gap:a.gap)>=AD.gap;
- if(!win&&gapOk&&a.pity.n>=Math.max(AD.gap,a.pity.at-t.pity)){a.pity.n=0;a.pity.at=AD.pity[0]+Math.floor(rnd()*(AD.pity[1]-AD.pity[0]+1));const tier=rollTier(AD.wChest,rnd),it=pickLoot(tier,rnd,!!hh);o.spin={chest:1,tier,id:it.id,got:grant(root,G,it.id,y)};a.stats.chests++}
- // рулетка Шума
- else if(gapOk&&AD.roul.from.includes(cls)){const ch=Math.min(AD.roul.cap,(AD.roul.base+a.pity.n*AD.roul.perFail+t.luck)*(hh?AD.roul.hh:1)*t.luckK);
-  if(rnd()<ch){const tier=rollTier(AD.w,rnd),it=pickLoot(tier,rnd,!!hh);o.spin={chest:0,tier,id:it.id,got:grant(root,G,it.id,y)};a.stats.spins++}}
- if(o.spin){a.gap=0;a.drops.unshift({t:now,id:o.spin.id,tier:o.spin.tier,chest:o.spin.chest});a.drops=a.drops.slice(0,40)}
+ const win=cls==='BOOKED'||cls==='DISCOVERY';if(win)a.pity.n=0;else{a.pity.n++;a.gap=(a.gap||0)+1}
+ if(a.gu==null)a.gu=rnd();   // кусок 34: когда придёт находка, решает случайное число a.gu: ровно от 25 до 40 неудач, все значения равновероятны
+ const gapOk=(a.gap||0)>=gapNeed(a,t,!!hh);   // свежее сохранение считает с нуля: даже первая находка не раньше 25-й неудачи
+ if(!win&&gapOk){
+  if(a.pity.n>=Math.max(AD.gap,a.pity.at-t.pity)){a.pity.n=0;a.pity.at=AD.pity[0]+Math.floor(rnd()*(AD.pity[1]-AD.pity[0]+1));const tier=rollTier(AD.wChest,rnd),it=pickLoot(tier,rnd,!!hh);o.spin={chest:1,tier,id:it.id,got:grant(root,G,it.id,y)};a.stats.chests++}   // гарант: долгая серия без встреч → сундук эпик+
+  else{const tier=rollTier(AD.w,rnd),it=pickLoot(tier,rnd,!!hh);o.spin={chest:0,tier,id:it.id,got:grant(root,G,it.id,y)};a.stats.spins++}}   // иначе — рулетка Шума, на любом неудачном статусе
+ if(o.spin){a.gap=0;a.gu=rnd();a.drops.unshift({t:now,id:o.spin.id,tier:o.spin.tier,chest:o.spin.chest});a.drops=a.drops.slice(0,40)}
  // цели дня
  if(a.tr.k!==k)a.tr={k,done:{},hh:0,sig0:a.sigLife-sg};if(hh)a.tr.hh=(a.tr.hh||0)+1;
  const d=(root.days||{})[k]||{n:0,c:{}},val=x=>x.kind==='dials'?dayN:x.kind==='talk'?(d.c.TALK||0)+(d.c.CALLBACK||0)+(d.c.BOOKED||0)+(d.c.DISCOVERY||0):x.kind==='gk'?(d.c.GATEKEEPER||0):x.kind==='hh'?a.tr.hh:x.kind==='streak'?(d.bs||0):a.sigLife-(a.tr.sig0||0);
@@ -251,23 +255,36 @@ export function ghostRec(root,now,cls,sid=null){const g=root.gh||(root.gh={k:'',
  g.r100=((g.r100||'')+(isT?'1':'0')).slice(-100);
  const T=g.t,n=T.length,h=T.filter(x=>x>now-36e5).length,m10=T.filter(x=>x>now-6e5).length,f20=n>=20?now-T[n-20]:null,p100=g.r100.length>=100?[...g.r100].filter(c=>c==='1').length:null,p20=g.pt.filter(x=>x>now-12e5).length;
  g.bestH=Math.max(g.bestH||0,h);
- const slot=slotOf(now),day=g.days[k]||(g.days[k]={});day[slot]=n;const tk=g.tk[k]||(g.tk[k]={});tk[slot]=g.tl||0;
+ const dr=(root.days||{})[k],nd=dr&&dr.n!=null?dr.n:n,slot=slotOf(now),day=g.days[k]||(g.days[k]={});day[slot]=nd;const tk=g.tk[k]||(g.tk[k]={});tk[slot]=g.tl||0;
  const ks=Object.keys(g.days).sort();for(const x of ks.slice(0,-31)){delete g.days[x];delete g.tk[x]}
  // обновить рекорды; объявлять, только если побит рекорд прошлых дней (а не тот, что сам поставил минуту назад) и не чаще раза в 10 мин на рекорд
- const cur={b10:m10,b60:h,day:n,f20,p100,p20,ft:isT&&g.tl===1?g.ft:null},better={p20:(a,b)=>a>b,b10:(a,b)=>a>b,b60:(a,b)=>a>b,day:(a,b)=>a>b,p100:(a,b)=>a>b,f20:(a,b)=>a<b,ft:(a,b)=>a<b};
+ const cur={b10:m10,b60:h,day:nd,f20,p100,p20,ft:isT&&g.tl===1?g.ft:null},better={p20:(a,b)=>a>b,b10:(a,b)=>a>b,b60:(a,b)=>a>b,day:(a,b)=>a>b,p100:(a,b)=>a>b,f20:(a,b)=>a<b,ft:(a,b)=>a<b};
  const min={p20:3,b10:8,b60:20,day:30,p100:3,f20:1,ft:1},ms=[];
  for(const id in cur){const v=cur[id];if(v==null)continue;const old=g.rec[id];if(old==null||better[id](v,old))g.rec[id]=v;
   const r0=g.rec0[id];if(r0!=null&&better[id](v,r0)&&(id==='f20'||id==='ft'||v>=min[id])&&(!g.shown[id]||now-g.shown[id]>6e5)){g.shown[id]=now;
    const fm=x=>id==='f20'?mmssR(x):x;ms.push({k:'win',id,t:`РЕКОРД · ${REC_N[id]}: ${fm(v)}${id==='ft'?' набора':''} (был ${fm(r0)})`});g.rec0[id]=v}}
  const wc=weekCheck(root,now);if(wc)ms.push(wc);
- return{h,m10,f20,p100,p20,slot,n,cls,ms,pitch:isT}}
+ return{h,m10,f20,p100,p20,slot,n:nd,cls,ms,pitch:isT,t:now,meet:MEETC.includes(cls)?1:0}}
+// Статус убрали или заменили: убрать его событие из «призрака» (иначе «сегодня N» в уведомлении уходило вперёд относительно заданий дня).
+// u.gh = {t, p (питч), m (встреча)} — записывается в session.after. Полный откат (≤ undoSec) возвращает снимок и сюда не попадает.
+export function ghostDrop(root,u){const g=root&&root.gh,x=u&&u.gh;if(!g||!x||!g.t||g.k!==dayKey(x.t))return false;
+ const i=g.t.indexOf(x.t);if(i<0)return false;const after=g.t.length-1-i;g.t.splice(i,1);
+ if(x.p){const j=(g.pt||[]).indexOf(x.t);if(j>=0)g.pt.splice(j,1);g.tl=Math.max(0,(g.tl||0)-1);if(!g.tl)g.ft=0;else if(g.ft&&i<g.ft)g.ft--}
+ if(x.m)g.mt=Math.max(0,(g.mt||0)-1);
+ {const r=g.r100||'',pos=r.length-1-after;if(pos>=0&&pos<r.length)g.r100=r.slice(0,pos)+r.slice(pos+1)}
+ const sl=slotOf(x.t),dd=g.days&&g.days[g.k],tk=g.tk&&g.tk[g.k];
+ if(dd)for(const q in dd)if(+q>=sl)dd[q]=Math.max(0,dd[q]-1);
+ if(tk&&x.p)for(const q in tk)if(+q>=sl)tk[q]=Math.max(0,tk[q]-1);
+ return true}
 const cumAt=(day,slot)=>{let v=0;for(const s in day)if(+s<=slot)v=Math.max(v,day[s]);return v};
 const pl3=(n,a,b,c)=>{const m=n%100,k=n%10;return m>10&&m<20?c:k===1?a:k>=2&&k<=4?b:c};
 const sg=v=>(v>0?'+':v<0?'−':'±')+Math.abs(v);
 // «обычный ты»: среднее по последним 5 дням с наборами к этому же времени
 const usual=(src,k,slot)=>{const P=Object.entries(src||{}).filter(([x])=>x<k).slice(-5).map(([,d])=>cumAt(d,slot)).filter(v=>v>0);return P.length?Math.round(P.reduce((a,b)=>a+b,0)/P.length):0};
+// Кусок 34: тихий показатель в плашке дня — на сколько больше/меньше обычного к этому же часу (вместо уведомления на каждый звонок). null — не с чем сравнивать.
+export function paceDelta(root,now){const g=root&&root.gh;if(!g||!g.days)return null;const k=dayKey(now),slot=slotOf(now),dr=(root.days||{})[k],n=dr&&dr.n!=null?dr.n:0,u=usual(g.days,k,slot);return u>0?{u,n,diff:n-u}:null}
 export function ghostLine(root,now,i=0,rec=null){const g=root.gh;if(!g||!g.t.length)return null;if(rec&&rec.ms&&rec.ms.length)return rec.ms[0];
- const k=dayKey(now),slot=slotOf(now),n=g.t.length,R=g.rec0||{},tm=new Date(now).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+ const k=dayKey(now),slot=slotOf(now),dr=(root.days||{})[k],n=dr&&dr.n!=null?dr.n:g.t.length,R=g.rec0||{},tm=new Date(now).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
  const cls=rec&&rec.cls,m10=rec?rec.m10:g.t.filter(x=>x>now-6e5).length,h=rec?rec.h:g.t.filter(x=>x>now-36e5).length;
  if(cls&&MEETC.includes(cls))return{k:'up',h:'Встреча',t:`Встреча №${g.mt} за сегодня. До неё ты сделал ${n} ${pl3(n,'звонок','звонка','звонков')}`};
  // питч (кусок 18): только хорошие новости — обогнал, сравнялся, почти сравнялся. Если до рекорда далеко — просто счёт за 20 минут.

@@ -1,6 +1,6 @@
 // Все числа игры живут здесь. Названия статусов НЕ менять: они уходят в таблицу.
 export const CONFIG={
- schemaVersion:2,version:'r2p24',title:'UPLINK SYNDICATE',subtitle:'COLD LINE',tabTitle:'UPLINK SYNDICATE', // название игры и вкладки: рабочее, меняется ТОЛЬКО здесь
+ schemaVersion:2,version:'r2p25',title:'UPLINK SYNDICATE',subtitle:'COLD LINE',tabTitle:'UPLINK SYNDICATE', // название игры и вкладки: рабочее, меняется ТОЛЬКО здесь
  assumedDailyXp:3500,assumedDailyMoney:3900, // 3500/3900 откалиброваны симуляцией (tools/sim.mjs): железный день = ~3560 XP / ~3960 $
 
  classes:{TRASH:{xp:8,money:6,pts:1,fast:1},GATEKEEPER:{xp:12,money:10,pts:1,fast:1},MINOR:{xp:15,money:10,pts:1,fast:1},

@@ -47,9 +47,35 @@ const SND={
  levelup(){noise(0,.06,.3,3000,.8);tone(110,0,.22,"sine",.55,50);[523,659,784,1047,1319].forEach((f,i)=>tone(f,.04+i*.07,.3,"triangle",.28));tone(2093,.4,.6,"sine",.18);tone(2637,.48,.7,"sine",.14);for(let i=0;i<6;i++)noise(.35+i*.05,.04,.1,7000,3)},
  fanfare(){noise(0,1.6,.35,7000,.4);tone(90,0,.7,"sine",.9,35);[[262,330,392,523,0],[349,440,523,698,.35],[392,494,587,784,.7]].forEach(([a,b,c,d,t])=>[a,b,c,d].forEach(f=>tone(f,t,t>.5?1.1:.4,"sawtooth",.13)));[1.0,1.15,1.3,1.45,1.6].forEach(t=>{tone(2093,t,.3,"sine",.22);noise(t,.04,.15,7000,2)});setTimeout(()=>SND.ching(),900)}};
 
+// ---- кусок 34: звуки находок по редкости, праздник на сотню (3 уровня), новый ранг. Всё синтезируется кодом; свои файлы кладутся по тем же именам.
+const arp=(base,notes,t0,step,d,ty,g)=>notes.forEach((m,i)=>tone(base*Math.pow(2,m/12),t0+i*step,d,ty,g));
+const riser=(t0,d,g)=>{for(let i=0;i<14;i++)noise(t0+i*d/14,d/9,g*(.4+i/14),700+i*i*42,1.2)};
+const chord=(ms,base,t,d,ty,g)=>ms.forEach(m=>tone(base*Math.pow(2,m/12),t,d,ty,g));
+const party=L=>{const bpm=126+8*L,b=60/bpm,beats=Math.round((5.2+1.5*(L-1))/b);
+ for(let i=0;i<beats;i++){const t=i*b;tone(100,t,.2,"sine",.7,42);if(i%2===1){noise(t,.12,.32,1800,.8);tone(200,t,.1,"triangle",.2,120)}noise(t+b/2,.04,.12,8000,1);if(L>=2&&i%4===3)noise(t+b*.75,.05,.2,2400,1)}
+ const sc=[0,2,4,7,9,12,14,16,19,21,24];
+ for(let i=0;i<beats*2;i++)tone(392*Math.pow(2,sc[(i*3+(i>>2))%sc.length]/12),i*b/2,b*.45,L>=3?"sawtooth":"triangle",.09+.02*L);
+ for(let i=0;i<beats;i+=2)tone(98*(i%8<4?1:1.335),i*b,b*1.8,"sawtooth",.13);
+ [0,.6,1.3,2.1].slice(0,1+L).forEach(t=>{noise(t,.22,.5,1500,.5);tone(180,t,.16,"sine",.6,60);for(let k=0;k<8;k++)noise(t+.04+k*.03,.03,.14,5000+k*400,2)});
+ const T=beats*b;chord([0,4,7,12,16],262,T,1.4+.4*L,"sawtooth",.1);tone(55,T,1.2,"sine",.9,30);if(L>=3)riser(T-1.6,1.6,.3);
+ for(let i=0;i<10+6*L;i++)noise(T+.1+i*.07,.05,.14,6000+Math.random()*3000,3);setTimeout(()=>SND.ching(),T*1000)};
+Object.assign(SND,{
+ dropc(){tone(520,0,.09,"triangle",.18);tone(390,.05,.1,"triangle",.14)},
+ dropu(){SND.ching()},
+ dropr(){SND.chime();setTimeout(()=>SND.ching(),170)},
+ drope(){SND.levelup();tone(60,0,1,"sine",.8,30);arp(523,[0,4,7,12,16,19],.35,.07,.5,"triangle",.22);for(let i=0;i<8;i++)noise(.8+i*.06,.04,.14,7000,2)},
+ dropl(){noise(0,.5,.5,300,.4);tone(48,0,1.6,"sine",1,28);tone(96,0,.5,"sine",.8,40);riser(0,1.1,.28);
+  [[0,4,7,12],[5,9,12,17],[7,11,14,19]].forEach((c,j)=>chord(c,262,.9+j*.42,j===2?1.5:.5,"sawtooth",.12));
+  arp(1046,[0,4,7,12,16,19,24,28,31],1.2,.06,.45,"triangle",.22);
+  chord([0,7,12,16],131,2.1,1.9,"sawtooth",.15);tone(523,2.1,1.8,"square",.1);tone(1046,2.1,1.8,"triangle",.18);
+  for(let i=0;i<26;i++)noise(2.2+i*.08,.05,.15,6000+Math.random()*3000,3);setTimeout(()=>SND.ching(),2100)},
+ rankup(){tone(55,0,1.2,"sine",.9,30);noise(0,.3,.4,500,.5);arp(330,[0,4,7,12,16,19,24],.15,.09,.5,"triangle",.26);chord([0,4,7,12],262,.85,1.8,"sawtooth",.12);tone(1046,.9,1.6,"sine",.25);for(let i=0;i<10;i++)noise(1+i*.07,.05,.14,7000,2);setTimeout(()=>SND.ching(),1000)},
+ party1(){party(1)},party2(){party(2)},party3(){party(3)}});
+
 export {SND};
 export const FXT=[["VOICEMAIL","#d9a07a","ring",[["ringbeep",0]]],["SKIP","#e5603b","down",[["del",0]]],["HUNG UP","#f76808","crumple",[["hangup",0],["crumple",330],["bin",1300]]],["PITCHED","#f5a524","plane",[["sent",300]]],["SECURED","#34d17a","triumph",[["stamp",0],["ching",120]]],["BLOCKED","#e5484d","slash",[["slash",300]]],["NOTED","#e8d44d","fade",[["tick",0]]],["VM LEFT","#e5826e","flyup",[["beepsend",0]]],["MENU","#e6c84c","down",[["dtmf",0]]],["NO CONNECT","#6aa5c4","glitch",[["static",300]]],["TRASH","#b9793a","burn",[["sit",0],["burn",340]]],["???","#9aa0ad","spin",[["boing",300]]],["CALLBACK","#a58be0","swing",[["ringup",0]]],["FOLLOW-UP","#7c5cd6","right",[["chime",0]]],["DISCOVERY","#4aa3ff","triumph",[["disc",0],["chime",200]]]];
 export const SDESC={rewardsoft:"Мягкий звук награды за статус",ching:"CALL BOOKED (кассовый аппарат)",stamp:"удар штампа SECURED",disc:"CONDUCTED DISCOVERY CALL",chime:"Follow up in future",whip:"GATEKEEPER (хлыст)",slash:"GATEKEEPER (разрез)",hangup:"Owner hung up: трубка",crumple:"Owner hung up: бумага мнётся",bin:"Owner hung up: мусорка",sent:"Owner pitched & Hang Up",ringbeep:"Автоответчик: Были гудки",del:"Автоответчик: Не перезванивать",beepsend:"Автоответчик (leaved vm)",dtmf:"Menu",static:"Не соединяет",sit:"Номер не рабочий: тон",burn:"Номер не рабочий: огонь",boing:"Непонятная",ringup:"Call back",tick:"Другое / клики",levelup:"конец двадцатки",fanfare:"каждые 100 звонков",whoosh:"(зарезервировано)",reload:"(зарезервировано)",jackpot:"(зарезервировано)"};
+Object.assign(SDESC,{dropc:"находка: хлам",dropu:"находка: годное",dropr:"находка: редкое",drope:"находка: эпик",dropl:"находка: ЛЕГЕНДА (самый мощный)",rankup:"новый ранг",party1:"праздник: первая сотня за день",party2:"праздник: вторая сотня",party3:"праздник: третья и дальше"});
 export const snd=n=>{if(MUTE)return;try{const b=AB[n];if(b&&b.length){playBuf(b[Math.random()*b.length|0]);return}SND[n]&&SND[n]()}catch(e){}};
 // статус (индекс 0–14) → звуки по таймингам, как в старом
 export const statusSound=i=>{const f=FXT[i];if(!f)return;for(const [n,t] of f[3])setTimeout(()=>snd(n),t)};
